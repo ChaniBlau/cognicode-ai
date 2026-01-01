@@ -1,31 +1,46 @@
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage
 from app.agents.state import AgentState
-import os
+from app.core.llm_factory import get_llm
+import json
+import re
+import logging
 
-# אתחול המודל (ChatOpenAI ימשוך את המפתח אוטומטית מה-env)
-model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+logger = logging.getLogger(__name__)
+
+llm = get_llm()
 
 def architect_node(state: AgentState):
-    print("--- ARCHITECT: Thinking with AI ---")
+    logger.info("--- ARCHITECT: GENERATING PLAN ---")
     task = state["task"]
-    
-    # הפרומפט שינחה את הארכיטקט
-    system_prompt = (
-        "You are an expert Software Architect. "
-        "Create a concise technical plan (3-5 steps) to solve the user's task. "
-        "Return only the steps, separated by newlines."
-    )
-    
-    # קריאה ל-OpenAI
-    response = model.invoke([
-        HumanMessage(content=f"{system_prompt}\n\nTask: {task}")
-    ])
-    
-    # הפיכת התשובה לרשימה (Plan)
-    plan_steps = response.content.strip().split("\n")
-    
+
+    prompt = f"""
+Analyze the following task and return ONLY a VALID JSON array of logical steps.
+Each step must be a short, clear sentence.
+If unsure, still return a JSON array of strings.
+Do NOT include markdown, explanations, or extra text.
+
+Task:
+{task}
+"""
+
+    response = llm.invoke(prompt)
+    raw_content = response.content.strip()
+
+    if raw_content.startswith("```") and raw_content.endswith("```"):
+        raw_content = "\n".join(raw_content.split("\n")[1:-1]).strip()
+
+    try:
+        plan_steps = json.loads(raw_content)
+        if not isinstance(plan_steps, list):
+            logger.error("Parsed JSON is not a list")
+            raise ValueError("Parsed JSON is not a list")
+    except (json.JSONDecodeError, ValueError):
+        plan_steps = [
+            re.sub(r'^\d+\.\s*', '', line.strip())  
+            for line in raw_content.split("\n")
+            if line.strip() and not line.strip().startswith("-") and len(line.strip()) > 3
+        ]
+
     return {
         "plan": plan_steps,
-        "logs": [f"Architect generated a plan with {len(plan_steps)} steps."]
+        "logs": [f"Architect: Generated {len(plan_steps)} steps."]
     }
