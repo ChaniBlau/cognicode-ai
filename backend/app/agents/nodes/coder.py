@@ -27,6 +27,8 @@ def coder_node(state: AgentState):
     3. Do NOT include markdown blocks (like ```python or ```javascript) in your final response if possible, 
        but if you do, ensure the code is clearly enclosed.
     4. Do not provide explanations or comments outside the code.
+    5. At the end of the code, add an example usage with a 'print()' statement 
+       so we can verify the output.
     """
 
     response = llm.invoke(prompt)
