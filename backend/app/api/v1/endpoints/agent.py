@@ -34,7 +34,7 @@ async def start_task(request: TaskRequest):
             message=message,
             plan=final_state.get("plan"),
             code=final_state.get("code"),
-            logs=final_state.get("logs"),   
+            logs=final_state.get("logs"),
             error=final_state.get("error")   
         )
     except Exception as e:
