@@ -17,17 +17,25 @@ async def start_task(request: TaskRequest):
             "task": request.prompt,
             "plan": [],
             "code": "",
-            "logs": [f"Task started: {request.prompt}"]
+            "error": "",
+            "logs": [f"Task started: {request.prompt}"],
+            "iteration_count": 0
         }
 
         final_state = await app_graph.ainvoke(initial_state)
 
+        is_failed = final_state.get("error") and final_state.get("iteration_count", 0) >= 3
+        status = "failed" if is_failed else "completed"
+        message = "Task failed after multiple attempts" if is_failed else "Code generated successfully"
+
         return TaskResponse(
             task_id=str(uuid.uuid4()),
-            status="completed",
-            message="Plan generated successfully",
-            plan=final_state["plan"],
-            code=final_state["code"]
+            status=status,
+            message=message,
+            plan=final_state.get("plan"),
+            code=final_state.get("code"),
+            logs=final_state.get("logs"),   
+            error=final_state.get("error")   
         )
     except Exception as e:
         logger.error(f"Task failed: {str(e)}")
