@@ -1,46 +1,46 @@
 from app.agents.state import AgentState
 from app.core.llm_factory import get_llm
-import json
-import re
+from pydantic import BaseModel, Field
+from typing import List, Literal
 import logging
 
 logger = logging.getLogger(__name__)
 
-llm = get_llm()
+class ArchitectResponse(BaseModel):
+    language: Literal["python", "nodejs", "javascript", "go", "java", "cpp"] = Field(
+        description="The specific runtime environment or language required."
+    )
+    plan: List[str] = Field(min_items=1, description="Detailed step-by-step implementation plan.")
 
 def architect_node(state: AgentState):
     logger.info("--- ARCHITECT: GENERATING PLAN ---")
-    task = state["task"]
+    
+    llm = get_llm()
+    structured_llm = llm.with_structured_output(ArchitectResponse)
 
     prompt = f"""
-Analyze the following task and return ONLY a VALID JSON array of logical steps.
-Each step must be a short, clear sentence.
-If unsure, still return a JSON array of strings.
-Do NOT include markdown, explanations, or extra text.
+    You are a Senior Software Architect. Analyze the task and determine the best execution environment.
+    
+    GUIDELINES:
+    - If the user asks for 'NodeJS' or backend JS, set language to 'nodejs'.
+    - If the user asks for 'browser' or generic JS, set language to 'javascript'.
+    - Provide a technical, granular plan.
 
-Task:
-{task}
-"""
-
-    response = llm.invoke(prompt)
-    raw_content = response.content.strip()
-
-    if raw_content.startswith("```") and raw_content.endswith("```"):
-        raw_content = "\n".join(raw_content.split("\n")[1:-1]).strip()
+    USER TASK:
+    {state['task']}
+    """
 
     try:
-        plan_steps = json.loads(raw_content)
-        if not isinstance(plan_steps, list):
-            logger.error("Parsed JSON is not a list")
-            raise ValueError("Parsed JSON is not a list")
-    except (json.JSONDecodeError, ValueError):
-        plan_steps = [
-            re.sub(r'^\d+\.\s*', '', line.strip())  
-            for line in raw_content.split("\n")
-            if line.strip() and not line.strip().startswith("-") and len(line.strip()) > 3
-        ]
-
-    return {
-        "plan": plan_steps,
-        "logs": [f"Architect: Generated {len(plan_steps)} steps."]
-    }
+        response = structured_llm.invoke(prompt)
+        return {
+            "language": response.language,
+            "plan": response.plan,
+            "logs": [f"Architect: Selected {response.language}. Plan includes {len(response.plan)} steps."]
+        }
+    except Exception as e:
+        logger.error(f"Architect Error: {e}")
+        return {
+            "language": "python",
+            "plan": ["Process the request using Python standard library"],
+            "logs": ["Architect: Error in structured output, falling back to Python."]
+        }
