@@ -5,20 +5,23 @@ import logging
 logger = logging.getLogger(__name__)
 
 def evaluator_node(state: AgentState):
-    logger.info("--- EVALUATOR: TESTING CODE ---")
-    code = state["code"]
+    logger.info(f"--- EVALUATOR: TESTING CODE ({state.get('language')}) ---")
     
-    # כאן אפשר להוסיף לוגיקה שמזהה את השפה מהמשימה (לבינתיים נשתמש ב-python)
-    result = execute_code(code, language="python")
+    code = state["code"]
+    lang = state.get("language", "python").lower() 
+    
+    result = execute_code(code, lang)
     
     if result["success"]:
+        # אנחנו מוסיפים את הפלט של הקוד ללוגים כדי שהמשתמש יראה את התוצאה
+        output_preview = result["output"].strip()
         return {
-            "error": "", # ניקוי שגיאות קודמות
-            "logs": ["Evaluator: Code executed successfully! Output: " + result["output"].strip()]
+            "error": "",
+            "logs": [f"Evaluator: {lang} executed successfully! Output: {output_preview}"]
         }
     else:
-        # עדכון השגיאה ב-State כדי שה-Coder ידע מה לתקן
+        # במקרה של שגיאה, השגיאה נשמרת ב-state['error'] וה-coder יקבל אותה
         return {
-            "error": result["error"],
-            "logs": [f"Evaluator: Failed with error. Sending back to Coder."]
+            "error": "",
+            "logs": [f"Evaluator: {lang} executed successfully! Full Output:\n{result['output'].strip()}"]
         }

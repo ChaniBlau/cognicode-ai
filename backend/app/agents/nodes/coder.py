@@ -4,44 +4,58 @@ from app.agents.state import AgentState
 from app.core.llm_factory import get_llm
 
 logger = logging.getLogger(__name__)
-llm = get_llm()
 
 def coder_node(state: AgentState):
-    logger.info("--- CODER: WRITING CODE (Multi-Language Support) ---")
+    """
+    סוכן הכתיבה: מייצר קוד בשפה שנבחרה על ידי הארכיטקט.
+    """
+    logger.info(f"--- CODER: WRITING CODE (Target Language: {state.get('language')}) ---")
+    
+    llm = get_llm()
     task = state["task"]
     plan = "\n".join(state["plan"])
+    language = state.get("language", "python") 
     
-    error_context = f"\nIMPORTANT: Previous attempt failed with this error: {state.get('error')}. Please fix it." if state.get("error") else ""
+    error_context = ""
+    if state.get("error"):
+        error_context = f"""
+        ---
+        PREVIOUS ERROR DETECTED:
+        {state.get('error')}
+        Please analyze the error and fix the code accordingly.
+        ---
+        """
 
     prompt = f"""
-    You are an expert polyglot programmer. Your task is to write high-quality, clean, and production-ready code.
+    You are an expert Senior Developer specializing in {language}.
     
-    Task to solve: {task}
-    Follow this logical plan:
+    Task: {task}
+    Selected Language: {language}
+    
+    Follow this implementation plan:
     {plan}
     {error_context}
 
-    Instructions:
-    1. Determine the best programming language based on the task description (unless already specified).
-    2. Return ONLY the source code.
-    3. Do NOT include markdown blocks (like ```python or ```javascript) in your final response if possible, 
-       but if you do, ensure the code is clearly enclosed.
-    4. Do not provide explanations or comments outside the code.
-    5. At the end of the code, add an example usage with a 'print()' statement 
-       so we can verify the output.
+    CRITICAL INSTRUCTIONS:
+    1. Write ONLY valid {language} code.
+    2. Ensure the code is production-ready, clean, and follows {language} best practices.
+    3. MANDATORY: Include an example usage at the end that prints the result to the console 
+       (e.g., use 'print()' for Python, 'console.log()' for JavaScript, etc.) so we can verify the output.
+    4. Return ONLY the code. No explanations, no markdown introduction, no comments outside the code.
     """
 
     response = llm.invoke(prompt)
     raw_content = response.content.strip()
 
-    code_match = re.search(r"```(?:\w+\n)?(.*?)```", raw_content, re.DOTALL)
+
+    code_match = re.search(r"```(?:\w+)?\n?(.*?)```", raw_content, re.DOTALL)
     if code_match:
         refined_code = code_match.group(1).strip()
     else:
-        refined_code = raw_content
+        refined_code = raw_content.replace("```", "").strip()
 
     return {
         "code": refined_code,
-        "logs": ["Coder: Code generated/updated based on the provided plan."],
+        "logs": [f"Coder: Successfully generated {language} code."],
         "iteration_count": state.get("iteration_count", 0) + 1
     }
