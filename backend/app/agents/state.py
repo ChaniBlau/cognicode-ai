@@ -9,3 +9,5 @@ class AgentState(TypedDict):
     error: str
     logs: Annotated[List[str], operator.add]
     iteration_count: int  
+    search_query: str 
+    context: str
