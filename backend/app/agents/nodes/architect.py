@@ -11,6 +11,7 @@ class ArchitectResponse(BaseModel):
         description="The specific runtime environment or language required."
     )
     plan: List[str] = Field(min_items=1, description="Detailed step-by-step implementation plan.")
+    search_query: str = Field(description="If you need more info to solve the task, provide a search query. Otherwise, leave empty.")
 
 def architect_node(state: AgentState):
     logger.info("--- ARCHITECT: GENERATING PLAN ---")
@@ -20,14 +21,7 @@ def architect_node(state: AgentState):
 
     prompt = f"""
     You are a Senior Software Architect. Analyze the task and determine the best execution environment.
-    
-    GUIDELINES:
-    - If the user asks for 'NodeJS' or backend JS, set language to 'nodejs'.
-    - If the user asks for 'browser' or generic JS, set language to 'javascript'.
-    - Provide a technical, granular plan.
-
-    USER TASK:
-    {state['task']}
+    USER TASK: {state['task']}
     """
 
     try:
@@ -35,12 +29,14 @@ def architect_node(state: AgentState):
         return {
             "language": response.language,
             "plan": response.plan,
-            "logs": [f"Architect: Selected {response.language}. Plan includes {len(response.plan)} steps."]
+            "search_query": response.search_query or "", # חייב להופיע כאן!
+            "logs": [f"Architect: Selected {response.language}."] # חייב להיות רשימה []
         }
     except Exception as e:
         logger.error(f"Architect Error: {e}")
         return {
             "language": "python",
-            "plan": ["Process the request using Python standard library"],
-            "logs": ["Architect: Error in structured output, falling back to Python."]
+            "plan": ["Emergency fallback plan"],
+            "search_query": "", # גם במקרה של שגיאה, מחזירים ערך ריק
+            "logs": [f"Architect Error: {str(e)}"]
         }
