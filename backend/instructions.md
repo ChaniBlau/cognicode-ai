@@ -1,0 +1,747 @@
+# CogniCode AI - Backend Instructions
+
+## 📋 Table of Contents
+1. [Project Overview](#project-overview)
+2. [Architecture](#architecture)
+3. [Project Structure](#project-structure)
+4. [Setup & Installation](#setup--installation)
+5. [Core Components](#core-components)
+6. [State Machine & Data Flow](#state-machine--data-flow)
+7. [Development Guide](#development-guide)
+8. [API Endpoints](#api-endpoints)
+9. [Extending the System](#extending-the-system)
+10. [Troubleshooting](#troubleshooting)
+
+---
+
+## 🎯 Project Overview
+
+**CogniCode AI** is an autonomous agent system that automatically writes, tests, and refines Python code. It demonstrates advanced knowledge of state machines, design patterns, and AI orchestration.
+
+### Key Features
+- **Autonomous Code Generation**: AI agents collaborate to write functional code
+- **Self-Healing**: Automatic error detection and repair (up to 3 iterations)
+- **Real-time Monitoring**: Track agent thinking process and decision-making
+- **Multi-Language Support**: Architecture supports multiple programming languages
+- **Intelligent Research**: Built-in search capabilities for knowledge augmentation
+
+### Tech Stack
+- **Framework**: FastAPI (Python)
+- **Orchestration**: LangGraph (State Machine)
+- **LLMs**: Google Gemini 1.5 Pro, OpenAI GPT-4o
+- **Code Execution**: Sandboxed Python environment
+- **Search**: Tavily Search API integration
+
+---
+
+## 🏗️ Architecture
+
+The system is built on three integrated layers:
+
+### Layer 1: APIs & Entry Points (Backend Express)
+- **Location**: `app/api/v1/endpoints/`
+- **Responsibility**: Expose REST endpoints to receive user requests
+- **Interface**: HTTP requests from frontend
+- Validates incoming tasks and sends them to the orchestrator
+
+### Layer 2: Orchestrator (LangGraph State Machine)
+- **Location**: `app/agents/`
+- **Responsibility**: Manage the workflow and agent collaboration
+- **Components**:
+  - **Nodes**: Individual agent functions (Architect, Coder, Evaluator, Researcher)
+  - **Edges**: Transition rules between agents
+  - **State**: Central data structure passed between agents
+
+**Workflow Diagram**:
+```
+User Input 
+    ↓
+Architect (Plan) 
+    ↓ (if search needed)
+Researcher (Intent-driven search)
+    ↓
+Coder (Write)
+    ↓
+Evaluator (Test)
+    ↓ (If error && iteration < 3)
+Coder (Fix)
+    ↓ (If no error)
+Output to Frontend
+```
+
+### Layer 3: Execution & Tools (Python Runtime & APIs)
+- **Location**: `app/tools/`
+- **Responsibility**: Safe code execution and external API integration
+- **Components**:
+  - **Sandbox**: Safe Python code execution with output/error capture
+  - **Search**: External knowledge retrieval (Tavily API)
+
+---
+
+## 📁 Project Structure
+
+```
+backend/
+├── requirements.txt              # Python dependencies
+├── instructions.md              # This file
+├── .env                          # Environment variables (not in repo)
+├── app/
+│   ├── main.py                   # FastAPI app initialization
+│   │
+│   ├── agents/                   # State Machine Core
+│   │   ├── graph.py              # LangGraph workflow definition
+│   │   ├── state.py              # Central AgentState TypedDict
+│   │   └── nodes/                # AI Agent implementations
+│   │       ├── architect.py      # Stage 1: Task analysis & planning
+│   │       ├── coder.py          # Stage 2: Code generation
+│   │       ├── evaluator.py      # Stage 3: Testing & validation
+│   │       └── researcher.py     # Stage 3b: Knowledge search
+│   │
+│   ├── api/                      # REST API Layer
+│   │   ├── deps.py               # Dependency injection
+│   │   └── v1/
+│   │       └── endpoints/
+│   │           └── agent.py      # /api/v1/agent endpoints
+│   │
+│   ├── core/                     # Core Configurations
+│   │   ├── config.py             # Environment settings
+│   │   └── llm_factory.py        # LLM instance creation
+│   │
+│   ├── tools/                    # External Tools & Utilities
+│   │   ├── sandbox.py            # Safe code execution
+│   │   └── search.py             # Tavily search integration
+│   │
+│   ├── db/                       # Database Layer (Optional)
+│   │   ├── base.py               # Database configuration
+│   │   └── models.py             # SQLAlchemy models
+│   │
+│   └── schemas/                  # Pydantic Schemas
+│       └── agent_schema.py       # Request/Response schemas
+│
+└── venv/                         # Virtual environment
+```
+
+---
+
+## 🚀 Setup & Installation
+
+### Prerequisites
+- Python 3.10+
+- Windows/Mac/Linux
+- API Keys for:
+  - Google API (Gemini 1.5 Pro)
+  - OpenAI API (GPT-4o) - Optional
+  - Tavily API (Search) - Optional
+
+### Installation Steps
+
+1. **Clone & Navigate**
+   ```bash
+   cd backend
+   ```
+
+2. **Create Virtual Environment**
+   ```bash
+   python -m venv venv
+   # Windows
+   venv\Scripts\activate
+   # Mac/Linux
+   source venv/bin/activate
+   ```
+
+3. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Configure Environment Variables**
+   Create `.env` file in the root:
+   ```env
+   GOOGLE_API_KEY=your_google_api_key_here
+   OPENAI_API_KEY=your_openai_api_key_here
+   TAVILY_API_KEY=your_tavily_api_key_here
+   ```
+
+5. **Run the Server**
+   ```bash
+   python -m uvicorn app.main:app --reload
+   ```
+   Server runs at: `http://localhost:8000`
+
+6. **Access Documentation**
+   - Swagger UI: `http://localhost:8000/docs`
+
+---
+
+## 🧠 Core Components
+
+### 1. AgentState (app/agents/state.py)
+**Purpose**: Central data structure passed between all agents
+
+```python
+class AgentState(TypedDict):
+    task: str              # User's original request
+    plan: List[str]        # Logical steps (from Architect)
+    code: str              # Current code version
+    language: str          # Programming language
+    error: str             # Error message (if any)
+    logs: List[str]        # Conversation history
+    iteration_count: int   # Number of fix attempts
+    search_query: str      # Query for knowledge retrieval
+    context: str           # Additional context
+```
+
+**Why TypedDict?**
+- Type-safe state management
+- Clear contract between agents
+- Easy to extend with new fields
+
+### 2. Architect Node (app/agents/nodes/architect.py)
+**Role**: Task Analysis & Planning
+
+**Input**: User task description
+**Process**:
+1. Analyzes the user requirement
+2. Breaks it into logical steps
+3. Determines required function signature
+4. Decides if external research is needed
+
+**Output**: 
+- `plan`: List of implementation steps
+- `search_query`: If knowledge is needed (empty if not)
+
+**Example Flow**:
+```
+Input: "Create a recursive calculator function"
+↓
+Architect analyzes requirements
+↓
+Output Plan:
+  - Define function signature with three parameters
+  - Implement base cases
+  - Implement recursive case
+  - Add input validation
+```
+
+**When to Modify**:
+- Change planning strategy
+- Add new analysis capabilities
+- Modify planning prompts
+
+### 3. Researcher Node (app/agents/nodes/researcher.py)
+**Role**: Knowledge Retrieval (Conditional)
+
+**Input**: `search_query` from Architect
+**Process**:
+1. Receives search query (if needed)
+2. Calls Tavily Search API
+3. Retrieves relevant documentation/examples
+4. Adds to state context
+
+**Output**: Updated `context` field with search results
+
+**When is it Triggered?**
+- Architect detects unfamiliar patterns
+- Complex algorithm required
+- Need for best practices documentation
+
+**When to Modify**:
+- Add new search providers
+- Change search strategy
+- Implement caching
+
+### 4. Coder Node (app/agents/nodes/coder.py)
+**Role**: Code Generation & Refinement
+
+**Input**: 
+- Task description
+- Plan from Architect
+- Errors (if in repair mode)
+
+**Process**:
+1. Generates Python code based on plan
+2. In repair mode: fixes identified errors
+3. Updates iteration counter
+
+**Output**: New/updated `code`
+
+**Repair Logic**:
+```
+First Iteration: Generate fresh code
+Second Iteration: Fix first error found
+Third Iteration: Final optimization attempt
+After 3 iterations: Return best attempt
+```
+
+**When to Modify**:
+- Adjust code generation prompts
+- Change output format
+- Add language support
+
+### 5. Evaluator Node (app/agents/nodes/evaluator.py)
+**Role**: Code Testing & Validation
+
+**Input**: Generated code from Coder
+**Process**:
+1. Executes code in sandbox
+2. Captures output and errors
+3. Validates logic correctness
+4. Determines next action
+
+**Output**: 
+- `error`: Error message (or empty if successful)
+- State unchanged if error-free
+
+**Decision Logic**:
+```
+if no error:
+    return END (success)
+elif iteration_count < 3:
+    return "coder" (repair)
+else:
+    return END (max attempts reached)
+```
+
+**Errors Caught**:
+- Syntax errors
+- Runtime exceptions
+- Logic failures
+
+**When to Modify**:
+- Change validation criteria
+- Add new test types
+- Implement performance checks
+
+---
+
+## 🔄 State Machine & Data Flow
+
+### The Graph (app/agents/graph.py)
+
+**Three Key Routing Rules**:
+
+1. **After Architect** (`router_after_architect`)
+   ```python
+   if search_query is not empty:
+       → Researcher
+   else:
+       → Coder
+   ```
+
+2. **After Researcher**
+   ```python
+   Always → Coder
+   (Researcher adds context, doesn't generate code)
+   ```
+
+3. **After Evaluator** (`decide_next_step`)
+   ```python
+   if no error:
+       → END (success)
+   elif iteration_count < 3:
+       → Coder (repair)
+   else:
+       → END (max attempts reached)
+   ```
+
+### Complete Execution Flow
+
+```
+START
+  ↓
+Architect Node
+  - Analyzes task
+  - Creates plan
+  - Decides: research needed?
+  ↓
+[If search_query set]
+Researcher Node
+  - Searches for context
+  - Updates state
+  ↓
+Coder Node
+  - Writes code
+  - Increment iteration_count
+  ↓
+Evaluator Node
+  - Runs code in sandbox
+  - Checks for errors
+  ↓
+[If error and iterations < 3]
+  → Back to Coder (repair mode)
+  ↓
+[If no error or iterations ≥ 3]
+END
+  ↓
+Return result to Frontend
+```
+
+### Example Execution (2-iteration repair)
+
+```
+Iteration 0:
+  Architect → Plan: "Define func, add validation, implement algorithm"
+  Researcher → (No query)
+  Coder → Generates: def calculate(x, y): ...
+  Evaluator → Error: "NameError on line 3"
+  
+Iteration 1:
+  Coder → Fixed: def calculate(x, y): (adds missing import)
+  Evaluator → Success! No errors
+  
+END → Send code to frontend
+```
+
+---
+
+## 👨‍💻 Development Guide
+
+### Running the System
+
+**Start the Backend**:
+```bash
+python -m uvicorn app.main:app --reload
+```
+
+**Test an Endpoint** (curl or Postman):
+```bash
+curl -X POST http://localhost:8000/api/v1/agent/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task": "Create a function that returns the factorial of a number",
+    "language": "python"
+  }'
+```
+
+### Adding a New Agent Node
+
+1. **Create new file**: `app/agents/nodes/my_agent.py`
+
+2. **Implement the node function**:
+   ```python
+   from app.agents.state import AgentState
+   from app.core.llm_factory import get_llm
+   
+   def my_agent_node(state: AgentState) -> AgentState:
+       """
+       My custom agent that does X.
+       """
+       llm = get_llm()
+       
+       # Process state
+       prompt = f"Given this plan: {state['plan']}, ..."
+       result = llm.invoke(prompt)
+       
+       # Update state
+       state['field_name'] = result
+       state['logs'].append("My agent log entry")
+       
+       return state
+   ```
+
+3. **Add to Graph** (`app/agents/graph.py`):
+   ```python
+   from app.agents.nodes.my_agent import my_agent_node
+   
+   workflow.add_node("my_agent", my_agent_node)
+   
+   # Add edges
+   workflow.add_edge("previous_node", "my_agent")
+   workflow.add_edge("my_agent", "next_node")
+   ```
+
+### Adding a New Tool
+
+1. **Create**: `app/tools/my_tool.py`
+
+2. **Implement**:
+   ```python
+   def my_tool_function(input_param: str) -> str:
+       """Integrate external API or functionality."""
+       # Implementation
+       return result
+   ```
+
+3. **Use in nodes**:
+   ```python
+   from app.tools.my_tool import my_tool_function
+   
+   result = my_tool_function(state['task'])
+   ```
+
+### Debugging Tips
+
+**Print State at Each Node**:
+```python
+def my_agent_node(state: AgentState) -> AgentState:
+    print("STATE:", state)  # Debug print
+    # ... rest of code
+    return state
+```
+
+**Check Logs**:
+```bash
+# Terminal will show detailed logs with --reload
+python -m uvicorn app.main:app --reload
+```
+
+**Test Individual Components**:
+```python
+from app.agents.nodes.architect import architect_node
+from app.agents.state import AgentState
+
+test_state = AgentState(
+    task="Test task",
+    plan=[],
+    code="",
+    language="python",
+    error="",
+    logs=[],
+    iteration_count=0,
+    search_query="",
+    context=""
+)
+
+result = architect_node(test_state)
+print(result)
+```
+
+---
+
+## 🔌 API Endpoints
+
+### Base URL
+```
+http://localhost:8000/api/v1/agent
+```
+
+### POST /generate
+**Description**: Generate code for a given task
+
+**Request**:
+```json
+{
+  "task": "Create a function that calculates fibonacci",
+  "language": "python"
+}
+```
+
+**Response** (Success):
+```json
+{
+  "code": "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)",
+  "status": "success",
+  "iterations": 1,
+  "error": null
+}
+```
+
+**Response** (With Repairs):
+```json
+{
+  "code": "...",
+  "status": "completed_with_repairs",
+  "iterations": 3,
+  "error": "Max iterations reached"
+}
+```
+
+### Response Status Codes
+- `200`: Success
+- `400`: Invalid request
+- `500`: Server error
+
+---
+
+## 🔧 Extending the System
+
+### 1. Add Language Support
+**Modify**: `app/agents/nodes/coder.py` and `evaluator.py`
+
+```python
+# In coder.py
+LANGUAGE_PROMPTS = {
+    "python": "You are a Python expert...",
+    "javascript": "You are a JavaScript expert...",
+    "java": "You are a Java expert..."
+}
+
+def coder_node(state: AgentState) -> AgentState:
+    language = state.get("language", "python")
+    prompt_template = LANGUAGE_PROMPTS.get(language, LANGUAGE_PROMPTS["python"])
+    # ... rest
+```
+
+### 2. Add New Evaluation Criteria
+**Modify**: `app/agents/nodes/evaluator.py`
+
+```python
+def evaluate_code(code: str, language: str) -> Tuple[bool, str]:
+    """
+    Evaluates code on multiple criteria:
+    - Syntax correctness
+    - Runtime errors
+    - Performance (New!)
+    - Code style (New!)
+    """
+    # ... existing checks ...
+    
+    # New performance check
+    execution_time = measure_execution_time(code)
+    if execution_time > TIMEOUT_THRESHOLD:
+        return False, f"Code execution timeout: {execution_time}s"
+    
+    return True, ""
+```
+
+### 3. Implement Caching
+**Create**: `app/tools/cache.py`
+
+```python
+from functools import lru_cache
+
+@lru_cache(maxsize=128)
+def cached_research(query: str) -> str:
+    """Cache search results to avoid duplicate API calls."""
+    return search_api.call(query)
+```
+
+### 4. Add Database Integration
+**Use**: `app/db/models.py`
+
+```python
+from sqlalchemy import Column, String, Integer
+from app.db.base import Base
+
+class GeneratedCode(Base):
+    __tablename__ = "generated_codes"
+    
+    id = Column(Integer, primary_key=True)
+    task = Column(String)
+    code = Column(String)
+    iterations = Column(Integer)
+```
+
+### 5. Implement WebSocket for Real-time Updates
+**Create**: `app/api/v1/endpoints/ws.py`
+
+```python
+from fastapi import WebSocket
+
+@app.websocket("/ws/agent")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    # Stream logs as agents work
+    # await websocket.send_json({"log": "Architect is analyzing..."})
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Issue: `GOOGLE_API_KEY not found`
+**Solution**:
+1. Create `.env` file in backend root
+2. Add: `GOOGLE_API_KEY=your_key`
+3. Restart server
+
+### Issue: Code execution times out
+**Solution**:
+- Increase timeout in `app/tools/sandbox.py`
+- Or simplify test cases
+- Check for infinite loops in generated code
+
+### Issue: LangGraph states not updating
+**Solution**:
+- Ensure all nodes return the modified state
+- Check that field names match `AgentState` definition
+- Verify `operator.add` usage for list concatenation
+
+### Issue: Search results not improving code quality
+**Solution**:
+- Verify Tavily API key is valid
+- Check search queries are specific enough
+- Increase context window size in `researcher_node`
+
+### Issue: Infinite loop between Coder and Evaluator
+**Solution**:
+- Check `iteration_count` is being incremented
+- Verify `decide_next_step` logic in `graph.py`
+- Inspect error detection in `evaluator.py`
+
+---
+
+## 📊 Performance Considerations
+
+### Timeout Settings
+- **Code Execution**: 10 seconds (configurable)
+- **LLM Requests**: 30 seconds
+- **Search Requests**: 5 seconds
+
+### Iteration Limits
+- **Max Self-Healing Rounds**: 3
+- **Reason**: Balance between correctness and efficiency
+
+### State Size
+- Keep logs concise (summarize after 10 entries)
+- Archive old states to database for history
+
+---
+
+## 🎓 Key Design Patterns Used
+
+1. **State Machine**: LangGraph-based workflow orchestration
+2. **Factory Pattern**: `llm_factory.py` for LLM instantiation
+3. **Dependency Injection**: `app/api/deps.py`
+4. **TypedDict**: Type-safe state definition
+5. **Conditional Routing**: Dynamic graph edges based on state
+
+---
+
+## 📝 Code Style Guidelines
+
+- Use type hints for all functions
+- Document with docstrings (Google style)
+- Keep functions focused (single responsibility)
+- Use meaningful variable names
+- Add logging for debugging
+
+---
+
+## 🔗 Related Resources
+
+- **LangGraph Documentation**: https://langchain-ai.github.io/langgraph/
+- **FastAPI Documentation**: https://fastapi.tiangolo.com/
+- **Pydantic Documentation**: https://docs.pydantic.dev/
+- **Google Gemini API**: https://cloud.google.com/docs/generative-ai
+- **Tavily Search API**: https://api.tavily.com/docs
+
+---
+
+## ✅ Quick Reference Commands
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run development server
+python -m uvicorn app.main:app --reload
+
+# Format code
+pip install black && black app/
+
+# Type checking
+pip install mypy && mypy app/
+
+# Run tests (when available)
+pip install pytest && pytest tests/
+
+# View generated code structure
+tree -I "__pycache__|*.pyc|venv"
+```
+
+---
+
+**Last Updated**: March 18, 2026
+**Backend Version**: 1.0.0
+**Status**: Active Development
